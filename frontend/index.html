@@ -8,7 +8,7 @@
         :root { --primary: #0066cc; --danger: #dc2626; --success: #16a34a; --info: #6b7280; --bg: #f4f7f9; --text: #333; --folder-bg: #edf5ff; }
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: var(--text); }
         .container { max-width: 1000px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; min-height: 400px; }
-        
+
         header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
         h1 { font-size: 1.4rem; color: var(--primary); margin: 0; }
 
@@ -16,7 +16,7 @@
         .tool-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; align-items: center; }
         .tool-item { display: flex; gap: 8px; align-items: center; border-right: 1px solid #c3dafe; padding-right: 20px; }
         .tool-item:last-child { border-right: none; }
-        
+
         .breadcrumb { background: #eee; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem; }
         .breadcrumb span { cursor: pointer; color: var(--primary); font-weight: bold; }
 
@@ -24,10 +24,10 @@
         .file-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s; }
         .item-folder { cursor: pointer; }
         .item-folder:hover { background: var(--folder-bg); }
-        
+
         .file-info { display: flex; align-items: center; gap: 10px; flex-grow: 1; }
         .actions { display: flex; gap: 5px; }
-        
+
         .btn { padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.75rem; transition: 0.2s; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-success { background: var(--success); color: white; }
@@ -51,7 +51,6 @@
         .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .slider { background-color: var(--primary); }
         input:checked + .slider:before { transform: translateX(14px); }
-
         .progress-bar { height: 4px; background: #eee; margin-top: 15px; display: none; border-radius: 2px; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
     </style>
@@ -101,14 +100,35 @@
 </div>
 
 <script>
-    // Substitua pelas suas URLs reais
+    // --- CONFIGURAÇÃO ---
+    // Insira sua URL PAR aqui
     const URL_PAR = "https://SEU-BUCKET-PUBLICO.oraclecloud.com/";
+    // Insira sua URL do Worker aqui (Deixe vazio ou use o padrão para desativar auto-v2)
     const URL_WORKER = "https://SEU-WORKER.workers.dev/o/";
 
     let BASE_URL = URL_PAR;
     let modoWorker = false;
     let todosObjetos = [];
     let prefixoAtual = "";
+
+    // Lógica de Inicialização Inteligente
+    function inicializarApp() {
+        const toggle = document.getElementById('modeToggle');
+        
+        // Se a URL do Worker foi configurada (não é a string de exemplo e não está vazia)
+        if (URL_WORKER && URL_WORKER !== "https://SEU-WORKER.workers.dev/o/") {
+            toggle.checked = true;
+            modoWorker = true;
+            BASE_URL = URL_WORKER;
+            document.getElementById('mode-label').style.fontWeight = "normal";
+        } else {
+            toggle.checked = false;
+            modoWorker = false;
+            BASE_URL = URL_PAR;
+            document.getElementById('mode-label').style.fontWeight = "bold";
+        }
+        buscarDados();
+    }
 
     function alternarModo() {
         modoWorker = document.getElementById('modeToggle').checked;
@@ -163,7 +183,7 @@
         const lista = document.getElementById('lista-arquivos');
         const loadingStatus = document.getElementById('loadingStatus');
         const breadcrumb = document.getElementById('breadcrumb');
-        
+
         lista.innerHTML = "";
         loadingStatus.style.display = "none";
         document.getElementById('current-dir').innerText = prefixoAtual || "Raiz";
@@ -257,7 +277,7 @@
         const caminho = prefixoAtual + arq.name;
         const bar = document.getElementById('progressContainer');
         const fill = document.getElementById('progressFill');
-
+        
         try {
             bar.style.display = 'block';
             fill.style.width = '30%';
@@ -270,7 +290,8 @@
         } catch (e) { alert("Erro no upload"); }
     }
 
-    buscarDados();
+    // Chama a inicialização inteligente ao carregar
+    inicializarApp();
 </script>
 
 </body>
