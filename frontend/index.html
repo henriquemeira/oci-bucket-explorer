@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCI Bucket Explorer</title>
+    <style>
+        :root { --primary: #0066cc; --danger: #dc2626; --success: #16a34a; --info: #6b7280; --bg: #f4f7f9; --text: #333; --folder-bg: #edf5ff; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: var(--text); }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); position: relative; min-height: 400px; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
+        h1 { font-size: 1.4rem; color: var(--primary); margin: 0; }
+
+        .toolbar { background: #f8fbff; border: 2px dashed #c3dafe; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .tool-group { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; align-items: center; }
+        .tool-item { display: flex; gap: 8px; align-items: center; border-right: 1px solid #c3dafe; padding-right: 20px; }
+        .tool-item:last-child { border-right: none; }
+        
+        .breadcrumb { background: #eee; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 0.9rem; }
+        .breadcrumb span { cursor: pointer; color: var(--primary); font-weight: bold; }
+
+        .file-list { list-style: none; padding: 0; margin: 0; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; border-bottom: 1px solid #f0f0f0; transition: background 0.2s; }
+        .item-folder { cursor: pointer; }
+        .item-folder:hover { background: var(--folder-bg); }
+        
+        .file-info { display: flex; align-items: center; gap: 10px; flex-grow: 1; }
+        .actions { display: flex; gap: 5px; }
+        
+        .btn { padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.75rem; transition: 0.2s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-info { background: var(--info); color: white; }
+        .btn-danger { background: #fee2e2; color: var(--danger); border: 1px solid #fecaca; }
+        .btn-danger:hover { background: var(--danger); color: white; }
+        .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
+
+        /* Modal de Informações */
+        #modalInfo { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.3); z-index: 1000; display: none; min-width: 300px; }
+        #overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index: 999; display: none; }
+        .modal-header { font-weight: bold; border-bottom: 1px solid #eee; margin-bottom: 10px; padding-bottom: 5px; color: var(--primary); }
+        .info-row { margin: 8px 0; font-size: 0.9rem; }
+        .info-label { font-weight: bold; color: #666; }
+
+        /* Rodapé de Configuração (Toggle) */
+        .footer-settings { margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; align-items: center; gap: 10px; font-size: 0.8rem; color: #777; }
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(14px); }
+
+        .progress-bar { height: 4px; background: #eee; margin-top: 15px; display: none; border-radius: 2px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+<div id="overlay" onclick="fecharModal()"></div>
+<div id="modalInfo">
+    <div class="modal-header">Detalhes do Arquivo</div>
+    <div id="modalContent">Carregando...</div>
+    <button class="btn btn-primary" style="width:100%; margin-top:15px;" onclick="fecharModal()">Fechar</button>
+</div>
+
+<div class="container">
+    <header>
+        <h1>OCI Bucket Explorer</h1>
+        <small id="current-dir">Raiz</small>
+    </header>
+
+    <div class="toolbar">
+        <div class="tool-group">
+            <div class="tool-item">
+                <input type="file" id="fileInput">
+                <button class="btn btn-primary" onclick="fazerUpload()">Subir Arquivo</button>
+            </div>
+            <div class="tool-item">
+                <input type="text" id="folderInput" placeholder="Nova pasta">
+                <button class="btn btn-success" onclick="criarPasta()">Criar Pasta</button>
+            </div>
+        </div>
+        <div class="progress-bar" id="progressContainer"><div class="progress-fill" id="progressFill"></div></div>
+        <small id="statusMsg" style="display:block; margin-top:8px; text-align:center; color: #666; font-weight: bold;"></small>
+    </div>
+    
+    <div class="breadcrumb" id="breadcrumb"></div>
+    <div id="loadingStatus" style="text-align:center; padding:20px;">Sincronizando...</div>
+    <ul id="lista-arquivos" class="file-list"></ul>
+
+    <div class="footer-settings">
+        <span id="mode-label">Modo: PAR (V1)</span>
+        <label class="switch">
+            <input type="checkbox" id="modeToggle" onchange="alternarModo()">
+            <span class="slider"></span>
+        </label>
+        <span>Worker (V2)</span>
+    </div>
+</div>
+
+<script>
+    // Substitua pelas suas URLs reais
+    const URL_PAR = "https://SEU-BUCKET-PUBLICO.oraclecloud.com/";
+    const URL_WORKER = "https://SEU-WORKER.workers.dev/o/";
+
+    let BASE_URL = URL_PAR;
+    let modoWorker = false;
+    let todosObjetos = [];
+    let prefixoAtual = "";
+
+    function alternarModo() {
+        modoWorker = document.getElementById('modeToggle').checked;
+        BASE_URL = modoWorker ? URL_WORKER : URL_PAR;
+        document.getElementById('mode-label').style.fontWeight = modoWorker ? "normal" : "bold";
+        buscarDados();
+    }
+
+    async function buscarDados() {
+        document.getElementById('loadingStatus').style.display = "block";
+        try {
+            const resposta = await fetch(BASE_URL);
+            const dados = await resposta.json();
+            todosObjetos = dados.objects || [];
+            renderizar();
+        } catch (e) { document.getElementById('loadingStatus').innerText = "Erro ao carregar dados."; }
+    }
+
+    function formatarTamanho(bytes) {
+        if (!bytes || bytes == 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async function verInfo(nome) {
+        const modal = document.getElementById('modalInfo');
+        const overlay = document.getElementById('overlay');
+        const content = document.getElementById('modalContent');
+        modal.style.display = 'block';
+        overlay.style.display = 'block';
+        content.innerHTML = "Carregando metadados...";
+
+        try {
+            const res = await fetch(BASE_URL + encodeURIComponent(nome), { method: 'HEAD' });
+            content.innerHTML = `
+                <div class="info-row"><span class="info-label">Nome:</span><br>${nome.split('/').pop() || nome}</div>
+                <div class="info-row"><span class="info-label">Tamanho:</span> ${formatarTamanho(res.headers.get('content-length'))}</div>
+                <div class="info-row"><span class="info-label">Modificado em:</span><br>${new Date(res.headers.get('last-modified')).toLocaleString('pt-BR')}</div>
+                <div class="info-row"><span class="info-label">Tipo:</span> ${res.headers.get('content-type')}</div>
+            `;
+        } catch (e) { content.innerHTML = "Erro ao buscar informações."; }
+    }
+
+    function fecharModal() {
+        document.getElementById('modalInfo').style.display = 'none';
+        document.getElementById('overlay').style.display = 'none';
+    }
+
+    function renderizar() {
+        const lista = document.getElementById('lista-arquivos');
+        const loadingStatus = document.getElementById('loadingStatus');
+        const breadcrumb = document.getElementById('breadcrumb');
+        
+        lista.innerHTML = "";
+        loadingStatus.style.display = "none";
+        document.getElementById('current-dir').innerText = prefixoAtual || "Raiz";
+
+        breadcrumb.innerHTML = `<span onclick="irParaPasta('')">🏠 Home</span>`;
+        if (prefixoAtual) {
+            let acumulado = "";
+            prefixoAtual.split('/').filter(p => p).forEach(p => {
+                acumulado += p + "/";
+                const temp = acumulado;
+                breadcrumb.innerHTML += ` / <span onclick="irParaPasta('${temp}')">${p}</span>`;
+            });
+        }
+
+        const itens = todosObjetos.filter(obj => {
+            if (!obj.name.startsWith(prefixoAtual) || obj.name === prefixoAtual) return false;
+            const resto = obj.name.substring(prefixoAtual.length);
+            const idx = resto.indexOf('/');
+            return idx === -1 || idx === resto.length - 1;
+        });
+
+        // ORDENAÇÃO: Pastas primeiro, depois Arquivos, ambos Alfabeticamente
+        const pastas = itens.filter(i => i.name.endsWith('/')).sort((a,b) => a.name.localeCompare(b.name));
+        const arquivos = itens.filter(i => !i.name.endsWith('/')).sort((a,b) => a.name.localeCompare(b.name));
+
+        [...pastas, ...arquivos].forEach(item => {
+            const ehPasta = item.name.endsWith('/');
+            const li = document.createElement('li');
+            li.className = 'file-item' + (ehPasta ? ' item-folder' : '');
+            if (ehPasta) li.onclick = () => irParaPasta(item.name);
+
+            li.innerHTML = `
+                <div class="file-info">
+                    <span>${ehPasta ? '📁' : '📄'}</span>
+                    <strong>${item.name.substring(prefixoAtual.length)}</strong>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-info" onclick="event.stopPropagation(); verInfo('${item.name}')">Info</button>
+                    ${!ehPasta ? `<button class="btn btn-primary" onclick="event.stopPropagation(); baixar('${item.name}')">Baixar</button>` : ''}
+                    <button class="btn btn-danger" 
+                            ${!modoWorker ? 'disabled title="Exclusão requer Modo Worker"' : ''} 
+                            onclick="event.stopPropagation(); excluirItem('${item.name}')">Excluir</button>
+                </div>
+            `;
+            lista.appendChild(li);
+        });
+    }
+
+    function irParaPasta(p) { prefixoAtual = p; renderizar(); }
+
+    async function criarPasta() {
+        const input = document.getElementById('folderInput');
+        const nome = input.value.trim();
+        if (!nome) return;
+        const caminho = prefixoAtual + nome + "/";
+        try {
+            await fetch(BASE_URL + encodeURIComponent(caminho), { method: 'PUT', body: new Blob([]) });
+            if (!todosObjetos.find(o => o.name === caminho)) todosObjetos.push({ name: caminho });
+            input.value = "";
+            renderizar();
+        } catch (e) { alert("Erro ao criar pasta"); }
+    }
+
+    async function excluirItem(nome) {
+        if (!modoWorker) return;
+        if (!confirm("Excluir item permanentemente?")) return;
+        try {
+            const res = await fetch(BASE_URL + encodeURIComponent(nome), { method: 'DELETE' });
+            if (res.ok) {
+                todosObjetos = todosObjetos.filter(o => o.name !== nome);
+                renderizar();
+            } else { alert("Erro: O Worker recusou a exclusão."); }
+        } catch (e) { alert("Erro na conexão"); }
+    }
+
+    async function baixar(nome) {
+        try {
+            const res = await fetch(BASE_URL + encodeURIComponent(nome));
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = window.URL.createObjectURL(blob);
+            a.download = nome.split('/').pop();
+            a.click();
+        } catch (e) { alert("Erro no download"); }
+    }
+
+    async function fazerUpload() {
+        const input = document.getElementById('fileInput');
+        if (!input.files[0]) return;
+        const arq = input.files[0];
+        const caminho = prefixoAtual + arq.name;
+        const bar = document.getElementById('progressContainer');
+        const fill = document.getElementById('progressFill');
+
+        try {
+            bar.style.display = 'block';
+            fill.style.width = '30%';
+            const res = await fetch(BASE_URL + encodeURIComponent(caminho), { method: 'PUT', body: arq });
+            if (res.ok) {
+                fill.style.width = '100%';
+                if (!todosObjetos.find(o => o.name === caminho)) todosObjetos.push({ name: caminho });
+                setTimeout(() => { bar.style.display = 'none'; renderizar(); }, 1000);
+            }
+        } catch (e) { alert("Erro no upload"); }
+    }
+
+    buscarDados();
+</script>
+
+</body>
+</html>
