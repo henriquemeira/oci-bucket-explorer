@@ -11,6 +11,7 @@ Este projeto resolve a limitação de visualização e gestão de arquivos em Bu
 * **Navegação por Pastas:** Suporte total a prefixos (pastas virtuais) com navegação via breadcrumbs.
 * **Gestão de Arquivos:** Upload, Download e visualização de metadados (Tamanho, Data de modificação, ETag).
 * **Ordenação Inteligente:** Pastas sempre no topo e ordenação alfabética automática.
+* **Compartilhamento por Link:** Gere um link temporário de download para um arquivo (Modo Worker); quem recebe baixa sem login.
 * **Interface Responsiva:** Design limpo focado em usabilidade.
 * **Dual Mode:** Escolha entre facilidade de configuração (PAR) ou controle total (Worker).
 
@@ -31,6 +32,17 @@ Para usuários que precisam de gestão completa, incluindo a exclusão de arquiv
 * **Funcionamento:** O Worker assina digitalmente as requisições usando o padrão RSA-SHA256 exigido pela Oracle.
 
 
+
+## 🔗 Compartilhamento por Link
+
+Em cada arquivo, o botão **Compartilhar** cria uma PAR (Pre-Authenticated Request) de leitura restrita àquele único arquivo e mostra o link para copiar. Quem receber o link baixa o arquivo direto do OCI, sem login e sem acesso ao restante do bucket.
+
+* **Requer o Modo Worker** (o botão fica desabilitado no Modo PAR).
+* **Sempre com validade:** 1 hora, 1 dia (padrão), 7 dias ou 30 dias. Não existe link permanente.
+* **O link é exibido uma única vez.** O OCI só informa a URL na criação; ao fechar o diálogo ela não pode ser consultada de novo (gere outro link se precisar).
+* **O link vale para o nome do arquivo:** se você sobrescrever o arquivo com o mesmo nome, o link passa a entregar a versão nova.
+* **Revogação:** pelo console da OCI, em Buckets > seu bucket > Pre-Authenticated Requests (as criadas aqui têm nome `share-<número>`).
+* Os arquivos continuam no bucket depois que o link expira; apague-os se não precisar mais deles.
 
 ## 🔐 Segurança e Autenticação
 

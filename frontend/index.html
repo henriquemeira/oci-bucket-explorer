@@ -145,14 +145,25 @@
                 background: var(--danger);
                 color: white;
             }
-            .btn-danger:disabled {
+            .btn-danger:disabled,
+            .btn-share:disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
                 filter: grayscale(1);
             }
+            .btn-share {
+                background: #e0f2fe;
+                color: #0369a1;
+                border: 1px solid #bae6fd;
+            }
+            .btn-share:hover:not(:disabled) {
+                background: #0369a1;
+                color: white;
+            }
 
-            /* Modal de Informações */
-            #modalInfo {
+            /* Modais (Informações e Compartilhar) */
+            #modalInfo,
+            #modalShare {
                 position: fixed;
                 top: 50%;
                 left: 50%;
@@ -189,6 +200,26 @@
             .info-label {
                 font-weight: bold;
                 color: #666;
+            }
+            #modalShare {
+                width: min(520px, 90vw);
+            }
+            #modalShare select,
+            #modalShare input[type="text"] {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 8px;
+                margin-top: 6px;
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                font-size: 0.85rem;
+            }
+            .share-error {
+                color: var(--danger);
+                font-weight: 600;
+                font-size: 0.85rem;
+                margin-top: 10px;
+                word-break: break-word;
             }
 
             /* Rodapé de Configuração (Toggle) */
@@ -266,6 +297,65 @@
             <button
                 class="btn btn-primary"
                 style="width: 100%; margin-top: 15px"
+                onclick="fecharModal()"
+            >
+                Fechar
+            </button>
+        </div>
+
+        <div id="modalShare">
+            <div class="modal-header">Compartilhar Arquivo</div>
+            <div class="info-row">
+                <span class="info-label">Arquivo:</span><br />
+                <span id="shareNome"></span>
+            </div>
+            <div id="shareForm">
+                <div class="info-row">
+                    <label class="info-label" for="shareValidade"
+                        >Validade do link:</label
+                    >
+                    <select id="shareValidade">
+                        <option value="1">1 hora</option>
+                        <option value="24" selected>1 dia</option>
+                        <option value="168">7 dias</option>
+                        <option value="720">30 dias</option>
+                    </select>
+                </div>
+                <button
+                    class="btn btn-primary"
+                    id="shareGerar"
+                    style="width: 100%; margin-top: 10px"
+                    onclick="gerarLink()"
+                >
+                    Gerar link
+                </button>
+            </div>
+            <div id="shareResultado" style="display: none">
+                <div class="info-row">
+                    <span class="info-label">Link (qualquer pessoa com ele baixa o arquivo):</span>
+                    <input type="text" id="shareUrl" readonly />
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Expira em:</span>
+                    <span id="shareExpira"></span>
+                </div>
+                <div class="info-row" style="color: #666">
+                    Este link é exibido apenas agora. Ao fechar, ele não poderá
+                    ser consultado novamente.
+                </div>
+                <button
+                    class="btn btn-success"
+                    id="shareCopiar"
+                    style="width: 100%; margin-top: 10px"
+                    onclick="copiarLink()"
+                >
+                    Copiar link
+                </button>
+            </div>
+            <div id="shareErro" class="share-error" style="display: none"></div>
+            <button
+                class="btn btn-info"
+                style="width: 100%; margin-top: 10px"
                 onclick="fecharModal()"
             >
                 Fechar
@@ -432,7 +522,116 @@
 
             function fecharModal() {
                 document.getElementById("modalInfo").style.display = "none";
+                document.getElementById("modalShare").style.display = "none";
                 document.getElementById("overlay").style.display = "none";
+                // O link nunca é guardado: limpa tudo ao fechar
+                document.getElementById("shareUrl").value = "";
+                arquivoCompartilhando = null;
+            }
+
+            // --- COMPARTILHAMENTO POR LINK (PAR de leitura por objeto) ---
+            let arquivoCompartilhando = null;
+
+            function abrirCompartilhar(nome) {
+                if (!modoWorker) return;
+                arquivoCompartilhando = nome;
+                document.getElementById("shareNome").innerText = nome;
+                document.getElementById("shareValidade").value = "24";
+                document.getElementById("shareForm").style.display = "block";
+                document.getElementById("shareResultado").style.display =
+                    "none";
+                document.getElementById("shareErro").style.display = "none";
+                document.getElementById("shareUrl").value = "";
+                document.getElementById("shareCopiar").innerText =
+                    "Copiar link";
+                const btn = document.getElementById("shareGerar");
+                btn.disabled = false;
+                btn.innerText = "Gerar link";
+                document.getElementById("modalShare").style.display = "block";
+                document.getElementById("overlay").style.display = "block";
+            }
+
+            function mostrarErroCompartilhar(msg) {
+                const erro = document.getElementById("shareErro");
+                erro.innerText = msg;
+                erro.style.display = "block";
+            }
+
+            async function gerarLink() {
+                const nome = arquivoCompartilhando;
+                if (!nome || !modoWorker) return;
+                const btn = document.getElementById("shareGerar");
+                const horas = parseInt(
+                    document.getElementById("shareValidade").value,
+                    10,
+                );
+                document.getElementById("shareErro").style.display = "none";
+                btn.disabled = true;
+                btn.innerText = "Gerando...";
+
+                try {
+                    const expira = new Date(Date.now() + horas * 3600 * 1000);
+                    const res = await fetch(
+                        new URL(URL_WORKER).origin + "/p/",
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                name: "share-" + Date.now(),
+                                accessType: "ObjectRead",
+                                objectName: nome,
+                                timeExpires: expira.toISOString(),
+                            }),
+                        },
+                    );
+                    if (!res.ok) {
+                        let detalhe = "";
+                        try {
+                            detalhe = (await res.json()).message || "";
+                        } catch (e) {}
+                        throw new Error(
+                            `HTTP ${res.status}${detalhe ? ": " + detalhe : ""}`,
+                        );
+                    }
+                    const dados = await res.json();
+                    if (!dados.accessUri)
+                        throw new Error("Resposta sem accessUri");
+
+                    // O arquivo foi trocado enquanto o modal estava aberto
+                    if (arquivoCompartilhando !== nome) return;
+
+                    const url = new URL(URL_PAR).origin + dados.accessUri;
+                    const expiraReal = dados.timeExpires
+                        ? new Date(dados.timeExpires)
+                        : expira;
+                    document.getElementById("shareUrl").value = url;
+                    document.getElementById("shareExpira").innerText =
+                        expiraReal.toLocaleString("pt-BR");
+                    document.getElementById("shareForm").style.display =
+                        "none";
+                    document.getElementById("shareResultado").style.display =
+                        "block";
+                } catch (e) {
+                    btn.disabled = false;
+                    btn.innerText = "Gerar link";
+                    mostrarErroCompartilhar(
+                        "Não foi possível gerar o link. " + e.message,
+                    );
+                }
+            }
+
+            async function copiarLink() {
+                const campo = document.getElementById("shareUrl");
+                const btn = document.getElementById("shareCopiar");
+                try {
+                    await navigator.clipboard.writeText(campo.value);
+                    btn.innerText = "Copiado ✓";
+                    setTimeout(() => (btn.innerText = "Copiar link"), 2000);
+                } catch (e) {
+                    campo.focus();
+                    campo.select();
+                    btn.innerText = "Selecionado: use Ctrl+C";
+                }
             }
 
             function renderizar() {
@@ -492,11 +691,19 @@
                 <div class="actions">
                     <button class="btn btn-info" onclick="event.stopPropagation(); verInfo('${item.name}')">Info</button>
                     ${!ehPasta ? `<button class="btn btn-primary" onclick="event.stopPropagation(); baixar('${item.name}')">Baixar</button>` : ""}
+                    ${!ehPasta ? `<button class="btn btn-share" ${!modoWorker ? 'disabled title="Compartilhar requer Modo Worker"' : ""}>Compartilhar</button>` : ""}
                     <button class="btn btn-danger"
                             ${!modoWorker ? 'disabled title="Exclusão requer Modo Worker"' : ""}
                             onclick="event.stopPropagation(); excluirItem('${item.name}')">Excluir</button>
                 </div>
             `;
+                    // Nome entregue por listener (sem interpolar em onclick)
+                    const btnShare = li.querySelector(".btn-share");
+                    if (btnShare)
+                        btnShare.addEventListener("click", (ev) => {
+                            ev.stopPropagation();
+                            abrirCompartilhar(item.name);
+                        });
                     lista.appendChild(li);
                 });
             }

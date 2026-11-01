@@ -72,7 +72,22 @@ A forma mais robusta de proteger este explorer é utilizar o Cloudflare Access:
 4. Configure uma política de autenticação (ex: permitir apenas seu e-mail via One-Time PIN).
 
 
-## 4. Ajustes Finais no Frontend
+## 4. Compartilhamento por link
+
+O botão **Compartilhar** usa o Worker para criar uma PAR de leitura por arquivo (`POST /p/` na API do bucket). Não há configuração extra além do Worker já descrito na seção 2, mas é preciso que `URL_PAR` esteja preenchida: o host do link final é o mesmo dela.
+
+1. Entre no explorer em Modo Worker e clique em **Compartilhar** ao lado de um arquivo.
+2. Escolha a validade (1 hora, 1 dia, 7 dias ou 30 dias) e clique em **Gerar link**.
+3. Copie o link. Ele só aparece nesse momento; para outro link, repita o processo.
+4. Para revogar antes da expiração, abra o bucket no console da OCI, vá em **Pre-Authenticated Requests** e apague a PAR (nome `share-<número>`).
+
+Observações:
+
+* O link dá acesso apenas de leitura àquele arquivo e funciona sem login, sem passar pelo Cloudflare Access.
+* Sobrescrever o arquivo com o mesmo nome muda o que o link entrega.
+* O Worker não possui autenticação própria; quem conhece a URL dele pode criar links. Proteja-o conforme a seção 3 se isso for um problema.
+
+## 5. Ajustes Finais no Frontend
 
 No arquivo index.html, certifique-se de preencher as URLs no início do script:
 
