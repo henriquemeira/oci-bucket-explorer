@@ -49,46 +49,60 @@ async function sign(request, env) {
   return `Signature version="1",keyId="${keyId}",algorithm="rsa-sha256",headers="${headersToSign.join(" ")}",signature="${signature}"`;
 }
 
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, HEAD, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Max-Age": "86400"
+};
+
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    
-    // Mapeia a URL do Worker para a URL da API da Oracle
-    // Ex: worker.dev/o/arquivo.txt -> objectstorage.sa-saopaulo-1.oraclecloud.com/.../o/arquivo.txt
-    const ociUrl = `https://objectstorage.${env.OCI_REGION}.oraclecloud.com/n/${env.OCI_NAMESPACE}/b/${env.OCI_BUCKET_NAME}${url.pathname}${url.search}`;
-
-    const newRequest = new Request(ociUrl, {
-      method: request.method,
-      body: request.body,
-      headers: new Headers(request.headers)
-    });
-
-    const date = new Date().toUTCString();
-    newRequest.headers.set("Date", date);
-    
-    // Gera a assinatura digital
-    const authHeader = await sign(newRequest, env);
-    newRequest.headers.set("Authorization", authHeader);
-    
-    // Adiciona o SHA-256 do corpo se necessário
-    if (request.method === "PUT" || request.method === "POST") {
-        const bodyClone = await request.clone().arrayBuffer();
-        const hashBuffer = await crypto.subtle.digest("SHA-256", bodyClone);
-        const contentHash = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
-        newRequest.headers.set("x-content-sha256", contentHash);
+    // Preflight CORS: responde direto, sem assinar nem chamar a OCI
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS });
     }
 
-    // CORS: Permite que seu index.html fale com o Worker
-    const response = await fetch(newRequest);
-    const newHeaders = new Headers(response.headers);
-    newHeaders.set("Access-Control-Allow-Origin", "*");
-    newHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS");
-    newHeaders.set("Access-Control-Allow-Headers", "*");
+    try {
+      const url = new URL(request.url);
 
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: newHeaders
-    });
+      // Ex: worker.dev/o/arquivo.txt -> objectstorage.<region>.oraclecloud.com/n/<ns>/b/<bucket>/o/arquivo.txt
+      const ociUrl = `https://objectstorage.${env.OCI_REGION}.oraclecloud.com/n/${env.OCI_NAMESPACE}/b/${env.OCI_BUCKET_NAME}${url.pathname}${url.search}`;
+
+      // Lê o corpo uma única vez (o stream só pode ser consumido uma vez)
+      const hasBody = !["GET", "HEAD"].includes(request.method);
+      const body = hasBody ? await request.arrayBuffer() : undefined;
+
+      const newRequest = new Request(ociUrl, {
+        method: request.method,
+        body,
+        headers: new Headers(request.headers)
+      });
+
+      newRequest.headers.set("Date", new Date().toUTCString());
+
+      if (request.method === "PUT" || request.method === "POST") {
+        const hashBuffer = await crypto.subtle.digest("SHA-256", body);
+        const contentHash = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
+        newRequest.headers.set("x-content-sha256", contentHash);
+      }
+
+      newRequest.headers.set("Authorization", await sign(newRequest, env));
+
+      const response = await fetch(newRequest);
+      const newHeaders = new Headers(response.headers);
+      for (const [k, v] of Object.entries(CORS)) newHeaders.set(k, v);
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ message: String(e && e.message || e) }), {
+        status: 500,
+        headers: { ...CORS, "Content-Type": "application/json" }
+      });
+    }
   }
 };
